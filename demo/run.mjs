@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {mkdirSync, writeFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {apply} from '../index.js';
-import {eventText} from '../state.js';
+import {eventText} from '../src/state.js';
 import {makeSession,makePruner,makeCtx,fakeJudge} from './fixtures.mjs';
 
 const session=makeSession();

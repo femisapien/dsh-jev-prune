@@ -58,6 +58,6 @@ One assistant message may contain several parallel tool calls. They share one he
 
 ## Implementation reference
 
-Detailed configuration, gating, protocol history and troubleshooting moved to [the implementation reference](docs/implementation.md). Measurement notes are in [measurements](docs/measurements.md). The recorded [demo](demo/README.md) runs real plugin code with a simulated host.
+Detailed configuration, gating, protocol history and troubleshooting moved to [the implementation reference](implementation.md). Measurement notes are in [measurements](measurements.md). The recorded [demo](../demo/README.md) runs real plugin code with a simulated host.
 
-The current fencing token supports claim-once behavior, but does not prove which external compaction owns a summary call. See [the reviewed limitations](docs/review-2026-10-05.md) before using concurrent compaction.
+The current fencing token supports claim-once behavior, but does not prove which external compaction owns a summary call. See [the reviewed limitations](review-2026-10-05.md) before using concurrent compaction.

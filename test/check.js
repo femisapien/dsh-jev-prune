@@ -1,5 +1,5 @@
 /**
- * check.js —— 纯函数自检（不碰 DSH 运行时，node check.js 直接跑）。
+ * check.js —— 纯函数自检（不碰 DSH 运行时，node test/check.js 直接跑）。
  *
  * 覆盖三件最容易写错的事：
  *   1. token 估算（上游校正算法的移植是否正确）
@@ -8,12 +8,12 @@
  */
 
 import assert from 'node:assert/strict'
-import { existsSync, readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { JevClient, JevError, estimateTokens } from './jev.js'
-import { JEV_PRUNE_MARKER, countChars, decideAction, parseLimit, planTrims, pruneSessionWithJev, sliceWithBudget } from './prune.js'
+import { JevClient, JevError, estimateTokens } from '../src/jev.js'
+import { JEV_PRUNE_MARKER, countChars, decideAction, parseLimit, planTrims, pruneSessionWithJev, sliceWithBudget } from '../src/prune.js'
 import {
   DEFAULT_COMPACT_TOOLS,
   DEFAULT_EVIDENCE_PATTERNS,
@@ -33,7 +33,7 @@ import {
   renderReceipt,
   scanEvidence,
   selectReceiptRanges,
-} from './receipt.js'
+} from '../src/receipt.js'
 import {
   buildJevState,
   buildToolNameIndex,
@@ -47,16 +47,16 @@ import {
   selectCandidates,
   sessionEvents,
   toolNameOf,
-} from './state.js'
+} from '../src/state.js'
 import {
   CONFIG_WARNINGS,
   Config,
   clampConfigNumber,
   isCompactableTool,
   resolveConfig,
-} from './index.js'
+} from '../index.js'
 
-const here = dirname(fileURLToPath(import.meta.url))
+const here = dirname(dirname(fileURLToPath(import.meta.url)))
 
 // ---------------------------------------------------------------- token 估算
 // 常数由真实 BPE 标定（见 jev.js 的 TOKEN_ESTIMATE_CONSTANTS 注释）。
@@ -1448,32 +1448,22 @@ const run = ({ events, cache, cfg, threshold }) => {
 {
   const pkg = JSON.parse(readFileSync(join(here, 'package.json'), 'utf8'))
   const declared = new Set([...(pkg.files ?? []), 'package.json'])
-  // issue #13：此前只对 .js 做存在性与 import 检查，package.json.files 里的
-  // 4 个 .mjs 全部漏检（verify_real_shapes.mjs 恰好有真实的相对 import）
-  const srcFiles = [...declared].filter((f) => f.endsWith('.js') || f.endsWith('.mjs'))
-  assert.ok(srcFiles.length >= 8, `package.json.files 应声明至少 8 个源文件，实际 ${srcFiles.length}`)
-  for (const file of srcFiles) {
-    assert.ok(existsSync(join(here, file)), `package.json.files 声明了 ${file} 但它不存在`)
+  const walk = (file) => {
+    assert.ok(existsSync(join(here, file)), 'Missing packaged path: ' + file)
+    return statSync(join(here, file)).isDirectory()
+      ? readdirSync(join(here, file)).flatMap(name => walk(file + '/' + name))
+      : [file]
   }
-  // 每个相对 import 都必须落到实际文件上
+  const packaged = [...declared].flatMap(walk)
+  const srcFiles = packaged.filter(file => /\.(?:js|mjs)$/.test(file))
+  assert.ok(srcFiles.length >= 8)
+  assert.ok(declared.has('index.js'))
   for (const file of srcFiles) {
     const text = readFileSync(join(here, file), 'utf8')
-    for (const m of text.matchAll(/from\s+'\.\/([^']+)'/g)) {
-      assert.ok(existsSync(join(here, m[1])), `${file} 里 ./${m[1]} 指向不存在的文件`)
-    }
-  }
-  // 入口本身必须在 files 里
-  assert.ok(declared.has('index.js'), 'package.json.files 必须包含入口 index.js')
-
-  // 不在 files 里（不随包分发）但必须存在于仓库的脚本，也要检查其相对 import 能落地。
-  // 这类文件是"忘了同步"的高发区：改了源码文件名却忘了改脚本的 import。
-  // issue #13：名单里曾有 probe_effect.js / e2e_jev.js —— 从未存在过，静默 continue
-  // 让这道存在性检查永远空转；现改为缺失即断言失败，并补上真正存在的两个工具。
-  for (const file of ['smoke_apply.mjs', 'check.js', 'wire_profile.mjs', 'inspect_session.mjs', 'verify_real_shapes.mjs']) {
-    assert.ok(existsSync(join(here, file)), `辅助脚本 ${file} 必须存在于仓库（若已改名请同步这份名单）`)
-    const text = readFileSync(join(here, file), 'utf8')
-    for (const m of text.matchAll(/from\s+'\.\/([^']+)'/g)) {
-      assert.ok(existsSync(join(here, m[1])), `${file} 里 ./${m[1]} 指向不存在的文件`)
+    for (const m of text.matchAll(/(?:from\s+|import\()['"](\.[^'"]+)['"]/g)) {
+      const target = resolve(here, dirname(file), m[1])
+      assert.ok(existsSync(target), file + ' references missing ' + m[1])
+      assert.ok(packaged.some(p => resolve(here, p) === target), file + ' references an unpackaged module')
     }
   }
 }

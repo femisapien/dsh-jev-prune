@@ -1,10 +1,10 @@
 # Fixed-version release preparation
 
-This change is delivered as a PR. No tag, GitHub release or npm publication is created before its final commit is merged. `package.json` currently identifies source version `0.1.0`; that alone does not imply a published package.
+Release tags, GitHub releases and npm packages are created from a verified merged commit. `package.json` identifies version `0.1.0`; check the GitHub release and npm registry for distribution availability.
 
 ## Before tagging
 
-1. Resolve or explicitly accept the [runtime review findings](docs/review-2026-10-05.md). Use an experimental prerelease while they remain; do not imply production readiness.
+1. Resolve or explicitly accept the [runtime review findings](review-2026-10-05.md). Use an experimental prerelease while they remain; do not imply production readiness.
 2. Review PR #45's changelog/install changes against this PR; reconcile overlapping README changes. Keep issue #35 open until published artifacts exist.
 3. From the merged commit, run the check, smoke, coverage and deterministic demo commands. CI must pass; validate the intended DSH profile in a real host separately.
 4. Choose a version, update `package.json` and the lockfile together, and change the changelog's prepared heading only when actually publishing.
@@ -24,4 +24,4 @@ Verify that the pinned installation succeeds in a clean DSH profile. A tag must 
 
 ## Optional npm distribution
 
-Use the owner's npm login and required authentication to publish the exact version. This environment is not authenticated to npm. Check `npm view dsh-jev-prune@<version> version` and install that exact published version in a clean profile before adding an npm-first command to the README. GitHub tag publication and npm publication are separate operations.
+Use the owner's npm login and required authentication to publish the exact version. Check `npm view dsh-jev-prune@<version> version` and install that exact published version in a clean profile before adding an npm-first command to the README. GitHub tag publication and npm publication are separate operations.
