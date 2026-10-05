@@ -55,3 +55,9 @@ The pressure ratio is also session-scoped. `judgePass` computes it asynchronousl
 ## Parallel batch boundary
 
 One assistant message may contain several parallel tool calls. They share one head event, and DSH 0.1.5's contiguous-range API cannot remove only a subset of those pairs. Mixed batches therefore compact eligible result bodies in place; only a fully eligible batch removes its assistant head and result nodes. This keeps the surface valid without fabricating assistant messages or depending on an unsupported multi-node insertion API.
+
+## Implementation reference
+
+Detailed configuration, gating, protocol history and troubleshooting moved to [the implementation reference](docs/implementation.md). Measurement notes are in [measurements](docs/measurements.md). The recorded [demo](demo/README.md) runs real plugin code with a simulated host.
+
+The current fencing token supports claim-once behavior, but does not prove which external compaction owns a summary call. See [the reviewed limitations](docs/review-2026-10-05.md) before using concurrent compaction.
