@@ -1,0 +1,51 @@
+{
+  "format": 1,
+  "host": "simulated",
+  "judge": "fixed probabilities",
+  "liveApiCalls": 0,
+  "stages": [
+    {
+      "title": "01 / Inspect long tool output",
+      "lines": [
+        "REAL PLUGIN / SIMULATED DSH HOST / FIXED JUDGE SCORES",
+        "No live TypeSafe requests. No live-host compatibility claim.",
+        "Read s3: 6,000 characters; keep score 0.05",
+        "Read s7: 6,000 characters; keep score 0.95 (protected)"
+      ]
+    },
+    {
+      "title": "02 / Trim spent output; preserve useful evidence",
+      "lines": [
+        "Actual pruneSession result: 2 outputs trimmed",
+        "s3: 6000 -> 848 characters",
+        "s7: unchanged, byte-for-byte equality assertion passed",
+        "Original s3 remains in the session event log"
+      ]
+    },
+    {
+      "title": "03 / Inject a deterministic region receipt",
+      "lines": [
+        "jev_compact_now invoked the real registered tool",
+        "Provider: jev-receipt / Model: deterministic",
+        "Original region: s2-s12",
+        "Protected s7 remains on the surface",
+        "[已压缩 · 确定性回执] 原历史 s2–s12 是 2 次工具调用（共约 1696 字符输出），为释放上下文已移出。以下为事实清单（工具名/入参/字符数/seq 由代码算出；模型原话仅作原文摘录，插件不新增推断）：",
+        "· s2 模型原话（原文摘录）：看一下。",
+        "· s10 Read：server/src/game/river.ts → 848 字符输出",
+        "· s4 模型原话（原文摘录）：看一下。"
+      ]
+    },
+    {
+      "title": "04 / Retrieve checkpoint text without changing the surface",
+      "lines": [
+        "jev_restore({ seq: 13 }) returned hidden region text",
+        "Archived tool output excerpt found: assertion passed",
+        "Surface unchanged: assertion passed",
+        "Scope: REGION checkpoint only; each event is capped at 4,000 units",
+        "Layer-1 / partial-result IDs are not directly restorable yet",
+        "All demonstration assertions passed"
+      ]
+    }
+  ],
+  "assertionsPassed": true
+}
