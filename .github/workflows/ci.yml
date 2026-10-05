@@ -28,13 +28,15 @@ jobs:
       - name: Assert peer versions match testedAgainst
         run: node -e "const v = require('@deepseek-ai/dsh-tools/package.json').version; console.log('dsh-tools = ' + v); if (!/^0\.1\.5-rc/.test(v)) { console.error('dsh-tools 应在 0.1.5-rc 线，实际 ' + v); process.exit(1) }"
       - name: Make plugin resolvable as its package name
-        run: node --input-type=module -e "import { copyFileSync, mkdirSync } from 'node:fs'; const out='node_modules/dsh-jev-prune'; mkdirSync(out,{recursive:true}); for (const f of ['index.js','jev.js','state.js','prune.js','receipt.js','package.json','cordis.patch.yml']) copyFileSync(f, out+'/'+f)"
+        run: node --input-type=module -e "import { cpSync, mkdirSync } from 'node:fs'; const out='node_modules/dsh-jev-prune'; mkdirSync(out,{recursive:true}); for (const f of ['index.js','src','package.json','cordis.patch.yml']) cpSync(f, out+'/'+f, {recursive:true})"
       - name: Pure-function checks
-        run: node check.js
+        run: node test/check.js
       - name: Smoke test (fake ctx, real apply)
-        run: node smoke_apply.mjs
+        run: node test/smoke_apply.mjs
       - name: Deterministic demonstration assertions
         run: npm run demo
+      - name: Verify public imports and document paths
+        run: node scripts/verify_layout.mjs
 
   # 原生 V8 覆盖率：复用现有断言，不引入额外测试框架。阈值低于当前基线
   # （lines 95.88 / branches 82.84 / functions 94.69），既能阻止明显倒退，也给
@@ -50,7 +52,7 @@ jobs:
       - name: Install dependencies (locked)
         run: npm ci --no-audit --no-fund
       - name: Make plugin resolvable as its package name
-        run: node --input-type=module -e "import { copyFileSync, mkdirSync } from 'node:fs'; const out='node_modules/dsh-jev-prune'; mkdirSync(out,{recursive:true}); for (const f of ['index.js','jev.js','state.js','prune.js','receipt.js','package.json','cordis.patch.yml']) copyFileSync(f, out+'/'+f)"
+        run: node --input-type=module -e "import { cpSync, mkdirSync } from 'node:fs'; const out='node_modules/dsh-jev-prune'; mkdirSync(out,{recursive:true}); for (const f of ['index.js','src','package.json','cordis.patch.yml']) cpSync(f, out+'/'+f, {recursive:true})"
       - name: Core-module coverage gate
         run: npm run coverage
 
@@ -79,14 +81,14 @@ jobs:
       - name: Make plugin resolvable as its package name
         run: |
           mkdir -p ci/dsh-host/node_modules/dsh-jev-prune
-          cp index.js jev.js state.js prune.js receipt.js package.json cordis.patch.yml ci/dsh-host/node_modules/dsh-jev-prune/
+          cp -r index.js src package.json cordis.patch.yml ci/dsh-host/node_modules/dsh-jev-prune/
       - name: Syntax-check shipped tools
         run: |
-          node --check check.js
-          node --check smoke_apply.mjs
-          node --check inspect_session.mjs
-          node --check verify_real_shapes.mjs
-          node --check wire_profile.mjs
+          node --check test/check.js
+          node --check test/smoke_apply.mjs
+          node --check scripts/inspect_session.mjs
+          node --check scripts/verify_real_shapes.mjs
+          node --check scripts/wire_profile.mjs
       - name: Real-host smoke (dynamic imports & version probe)
         working-directory: ci/dsh-host
         run: |
@@ -115,5 +117,5 @@ jobs:
       # 届时由 harness 从 fixture 树里解析。
       - name: Repeat checks against the root dependency tree (real dsh-llm, not the host fixture)
         run: |
-          node check.js
-          node smoke_apply.mjs
+          node test/check.js
+          node test/smoke_apply.mjs

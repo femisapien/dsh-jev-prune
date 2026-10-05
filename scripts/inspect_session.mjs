@@ -11,7 +11,7 @@
  *   "Unknown frame descriptor"）。所以这里自己按 zstd 帧格式切帧后逐帧解压。
  *
  * 用法：
- *   node inspect_session.mjs <会话目录 | session.v3.jsonl.zstd>
+ *   node scripts/inspect_session.mjs <会话目录 | session.v3.jsonl.zstd>
  */
 
 import { readFileSync, readdirSync, statSync } from 'node:fs'
@@ -136,7 +136,7 @@ const isMain = process.argv[1] != null && import.meta.url.endsWith(process.argv[
 if (isMain) {
   const target = process.argv[2]
   if (target == null) {
-    console.error('用法: node inspect_session.mjs <会话目录 | session.v3.jsonl.zstd>')
+    console.error('用法: node scripts/inspect_session.mjs <会话目录 | session.v3.jsonl.zstd>')
     process.exit(1)
   }
   const { file, header, events } = readSessionEvents(target)

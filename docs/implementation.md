@@ -79,7 +79,7 @@ Until transaction identity is propagated or all entry paths are serialized, do n
 
 **Compatibility**: tested against `@deepseek-ai/dsh@0.1.5-rc.2`. DSH 0.1.x is a pre-release line, and event shapes and service names can shift between rc versions. After upgrading DSH, re-run `npm run check` and the smoke test, and call `jev_probe_shapes` once in a real session to verify the field assumptions.
 
-Project documentation: [contributing](../CONTRIBUTING.md), [architecture](../ARCHITECTURE.md), [porting contract](../PORTING.md), and [configuration examples](../examples/README.md).
+Project documentation: [contributing](CONTRIBUTING.md), [architecture](ARCHITECTURE.md), [porting contract](PORTING.md), and [configuration examples](../examples/README.md).
 
 ## Install
 
@@ -94,7 +94,7 @@ dsh --profile web --dump-config | grep jev-prune
 On a machine without pnpm, the equivalent manual wiring (idempotent) is:
 
 ```bash
-node wire_profile.mjs <DSH_HOME> <profile-name>
+node scripts/wire_profile.mjs <DSH_HOME> <profile-name>
 ```
 
 ## Configuration
@@ -270,44 +270,31 @@ In normal operation both layers are driven automatically by context pressure; no
 - **Slices by Unicode code point**, never splitting a surrogate pair; token estimation uses a per-word correction algorithm that works for mixed CJK/Latin text
 - **Hook ordering is load-bearing**: the judge hook is `prepend`ed (`ctx.on(..., true)`) so it runs **before the base bundle's `compaction-basic`**. That package is the *only* caller of `pruner.pruneSession` (both call sites live in it — `:888` for context-overflow, `:902` for pressure), so it is also the only place layer 1's verdicts get consumed. Registered without `prepend`, pruning would read the *previous* round's verdicts and every fresh result would fall back to the size rules — layer 1 silently inert, no error anywhere. `smoke_apply.mjs` block **M** pins this by observing the judge counter at the moment `pruneSession` is called.
 
-## Testing
+## Testing and layout
 
 ```bash
-npm install   # pull the peer dependencies (a lockfile is committed; CI uses npm ci)
-npm run check # pure-function self-checks: token estimation / state assembly / candidate selection / both layers' decisions / packaging completeness
+npm ci
+npm run check
+npm run smoke
+npm run coverage
+npm run demo
+node scripts/verify_layout.mjs
 ```
 
-The smoke test (no full DSH dependency tree needed, ~4 s). Note that the plugin entry statically imports two peers, so in a clean directory install them first (the failure message says the same):
+The package includes `src/`, `test/`, `scripts/`, `docs/`, `demo/` and `assets/`. CI copies the entry and `src/` together, preserving relative imports. Public imports `dsh-jev-prune`, `dsh-jev-prune/index.js` and the four legacy helper subpaths still resolve. Direct helper commands now use `scripts/`; direct test commands now use `test/`.
 
-```bash
-npm install @deepseek-ai/schemastery @deepseek-ai/dsh-tools
-cp {index,jev,state,prune,receipt}.js package.json <some-dir>/node_modules/dsh-jev-prune/
-cp smoke_apply.mjs <some-dir>/ && cd <some-dir>/ && node smoke_apply.mjs
-```
+Use the committed lockfile for local verification. Fresh npm dependency resolution against the upstream RC peers can select partially published rc.3 packages and fail with ERESOLVE; that upstream dependency-tree issue is independent of this layout migration. The package archive itself was verified with the locked dependency fixture, including helper tests, smoke checks and manual profile wiring.
 
-The test scripts and helper tools (`check.js` / `smoke_apply.mjs` / `inspect_session.mjs` / `verify_real_shapes.mjs` / `wire_profile.mjs`) all ship with the npm package, so a plain `npm run check` works inside an installed copy. CI (`.github/workflows/ci.yml`) runs two jobs: a fast smoke job on the peer dependencies alone, and an integration job on the full DSH dependency tree.
-
-Coverage: the takeover of both interception points, the full decision path of both layers, the append protocol, receipt injection and its **ownership (fence)**, concurrent-compaction races, every gating branch (with counterfactual controls), the **text/`reasoning` split**, **small-population degradation**, **out-of-range config clamping**, **judge retries and per-batch isolation** (including per-pass vs lifetime counter semantics), **non-duplicated batch accounting**, **pressure gates failing closed in the same direction while still acting when the threshold is an absolute count**, **token-estimate calibration against a holdout set**, the **compaction quota**, **`alwaysTrimRatio` actually moving the budget** (with a precondition assert that the run took the budget path and not the small-population fallback), **a missing session exiting gracefully instead of throwing**, **the judge hook being prepended ahead of the base bundle's `compaction-basic`** (observed at the exact moment `pruneSession` is called), **a skipped layer-2 pass recording *why* it was skipped** (the blocked reason plus the per-reason exclusion counts — previously only the success path wrote a note, so the one path you actually need to debug was the one that stayed silent), **the degraded-mode floor pinned at both readings** (the mechanism, with the floor passed explicitly, *and* the default — the exported constant is now the single source of truth, so it can no longer diverge from `computeEligibleSeqs`'s own defaults), and **shell-type tools being excluded by default** (the `pwsh Remove-Item` regression case).
-
-The fake `ctx` in `smoke_apply.mjs` mirrors cordis's **listener model**, not just its method names: multiple listeners per event, `prepend`, and `waterfall` ordering — where a listener that never calls `next()` vetoes the rest of the chain, including the host's built-in behaviour. Modelling it as a one-handler-per-event map hid the ordering contract completely: two listeners silently overwrote each other, and the prepend flag was ignored.
-
-**Test boundaries** (what CI actually verifies): pure-function logic, takeover and the append protocol under a fake ctx, plus — in the integration job — "the plugin module loads against the real dependency tree and `freezeMessage` is available". **Not** covered by CI: service takeover inside a live DSH host and event-shape drift between rc versions — verify those with `jev_probe_shapes` in a real session.
-
-## Repository layout
-
-```
-├── index.js            # Plugin entry: config, both interception points, pre-step orchestration, commands and tools
-├── prune.js            # Layer 1: code-point slicing, per-node decisions, shadow-price protocol
-├── receipt.js          # Layer 2: tool-pairing balance, range selection, evidence guard, receipt rendering
-├── state.js            # DSH events → judge state: goal extraction, the two question axes, event-shape probes
-├── jev.js              # Jev client (structured noul batch API) + token estimation
-├── check.js            # Pure-function self-checks
-├── smoke_apply.mjs     # Smoke test (real apply on a fake ctx)
-├── wire_profile.mjs    # Manual install path for machines without pnpm
-├── inspect_session.mjs # Offline inspector for session logs (multi-frame zstd JSONL)
-├── verify_real_shapes.mjs # Offline regression of tool-name resolution against real session logs
-├── assets/             # Banner and diagrams (SVG sources + rendered PNGs)
-└── cordis.patch.yml    # Install contract
+```text
+index.js              plugin entry
+src/                  runtime helper modules
+test/                 checks and simulated host
+scripts/              profile and session utilities
+docs/                 architecture and reference
+demo/                 reproducible demonstration
+assets/               images and recordings
+examples/             profile snippets
+cordis.patch.yml      installation contract
 ```
 
 ## Privacy

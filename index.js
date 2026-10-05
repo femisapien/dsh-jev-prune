@@ -35,8 +35,8 @@ import { fileURLToPath } from 'node:url'
 import z from '@deepseek-ai/schemastery'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 
-import { JevClient, estimateTokens } from './jev.js'
-import { JEV_PRUNE_MARKER, isToolIn, parseLimit, pruneSessionWithJev } from './prune.js'
+import { JevClient, estimateTokens } from './src/jev.js'
+import { JEV_PRUNE_MARKER, isToolIn, parseLimit, pruneSessionWithJev } from './src/prune.js'
 import {
   DEFAULT_COMPACT_TOOLS,
   DEFAULT_EVIDENCE_PATTERNS,
@@ -52,7 +52,7 @@ import {
   renderPartialResultReceipt,
   renderReceipt,
   selectReceiptRanges,
-} from './receipt.js'
+} from './src/receipt.js'
 import {
   STATE_CONTEXT,
   buildJevState,
@@ -67,7 +67,7 @@ import {
   selectCandidates,
   sessionEvents,
   toolNameOf,
-} from './state.js'
+} from './src/state.js'
 
 // ---------------------------------------------------------------- 宿主版本探测
 /**

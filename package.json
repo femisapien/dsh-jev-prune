@@ -6,42 +6,33 @@
   "main": "index.js",
   "exports": {
     ".": "./index.js",
-    "./*.js": "./*.js",
+    "./index.js": "./index.js",
+    "./*.js": "./src/*.js",
     "./package.json": "./package.json"
   },
   "files": [
     "index.js",
-    "jev.js",
-    "state.js",
-    "prune.js",
-    "receipt.js",
-    "check.js",
-    "smoke_apply.mjs",
-    "wire_profile.mjs",
-    "inspect_session.mjs",
-    "verify_real_shapes.mjs",
+    "src",
+    "test",
+    "scripts",
     "cordis.patch.yml",
     "assets",
     "examples",
-    "ARCHITECTURE.md",
-    "PORTING.md",
-    "CONTRIBUTING.md",
+    "docs",
+    "demo",
     "README.md",
     "README_zh.md",
-    "LICENSE",
     "CHANGELOG.md",
-    "RELEASING.md",
-    "docs",
-    "demo"
+    "LICENSE"
   ],
   "engines": {
     "node": "^22.19.0 || >=24.0.0"
   },
   "scripts": {
-    "check": "node check.js",
-    "smoke": "node smoke_apply.mjs",
+    "check": "node test/check.js",
+    "smoke": "node test/smoke_apply.mjs",
     "demo": "node demo/run.mjs",
-    "coverage": "node --experimental-test-coverage --test --test-coverage-include=jev.js --test-coverage-include=prune.js --test-coverage-include=receipt.js --test-coverage-include=state.js --test-coverage-lines=90 --test-coverage-branches=75 --test-coverage-functions=75 check.js smoke_apply.mjs"
+    "coverage": "node --experimental-test-coverage --test --test-coverage-include=src/jev.js --test-coverage-include=src/prune.js --test-coverage-include=src/receipt.js --test-coverage-include=src/state.js --test-coverage-lines=90 --test-coverage-branches=75 --test-coverage-functions=75 test/check.js test/smoke_apply.mjs"
   },
   "peerDependencies": {
     "@deepseek-ai/dsh-tools": "^0.1.5-rc.2",
@@ -80,7 +71,7 @@
     },
     "compatibility": {
       "testedAgainst": "@deepseek-ai/dsh@0.1.5-rc.2",
-      "note": "DSH 0.1.x is a pre-release line; plugin-facing surfaces (event shapes, service names) may change between rc versions. After upgrading DSH, run `node check.js` and the smoke test, and use the `jev_probe_shapes` tool once in a real session."
+      "note": "DSH 0.1.x is a pre-release line; plugin-facing surfaces (event shapes, service names) may change between rc versions. After upgrading DSH, run `node test/check.js` and the smoke test, and use the `jev_probe_shapes` tool once in a real session."
     }
   }
 }

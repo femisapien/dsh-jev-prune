@@ -1,12 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.1.0 — 2026-10-06
 
 - Concise English and Chinese project introductions; implementation/configuration history moved behind architecture links.
 - Reproducible 24-second deterministic behavior recording, JSON evidence and terminal replay. Real plugin code runs against a simulated host with fixed judge scores.
 - Release preparation and source-review findings covering PR #45 and issue #35.
 
-## 0.1.0 — source version, not a published release
+### Runtime features
 
 - Semantic result trimming with pressure budgets, bounded excerpts and native fallback.
 - Deterministic receipts for full read-only steps and mixed parallel result bodies.
@@ -15,3 +15,5 @@
 - Cross-platform smoke checks, coverage gates and a locked DSH dependency fixture.
 
 Known limitations: pending receipt fencing does not identify external concurrent transactions; result caches do not invalidate on goal changes; replacement IDs are not directly restorable; small-sample layer-1 fallback can act at zero pressure ratio. See [review details](docs/review-2026-10-05.md).
+
+Repository layout: helpers now live in `src/`, tests in `test/`, tools in `scripts/`, and project documentation in `docs/`. Public package imports and the root plugin entry remain compatible. Direct helper-script paths changed; use the updated documented commands.

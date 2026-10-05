@@ -51,7 +51,7 @@ The return value should expose `shadowedSeqs` and `compactionId`. Missing option
 
 1. Install the plugin with `compactReceipts: false` and `dryRun: true`.
 2. Run `jev_probe_shapes`; verify event types, content block names, call IDs, and tool names.
-3. Run `node check.js` and `node smoke_apply.mjs` against the target dependency tree.
+3. Run `node test/check.js` and `node test/smoke_apply.mjs` against the target dependency tree.
 4. Confirm the judge hook runs before the host calls `pruneSession`.
 5. Enable layer 1 and inspect `jev_prune_status` plus the heartbeat file.
 6. Enable layer 2 in dry-run mode; confirm selected ranges begin and end on balanced cuts.

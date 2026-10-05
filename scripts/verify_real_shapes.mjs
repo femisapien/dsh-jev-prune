@@ -10,15 +10,15 @@
  *   ② toolNameOf 能否解析出工具名（而不是 'unknown'）
  *   ③ selectCandidates 会挑出哪些节点、解析出的名字是什么
  *
- * 用法: node verify_real_shapes.mjs <会话目录 | .jsonl.zstd> [...更多会话]
+ * 用法: node scripts/verify_real_shapes.mjs <会话目录 | .jsonl.zstd> [...更多会话]
  */
 
 import { readSessionEvents } from './inspect_session.mjs'
-import { buildToolNameIndex, selectCandidates, toolNameOf, resultChars } from './state.js'
+import { buildToolNameIndex, selectCandidates, toolNameOf, resultChars } from '../src/state.js'
 
 const targets = process.argv.slice(2)
 if (targets.length === 0) {
-  console.error('用法: node verify_real_shapes.mjs <会话目录 | .jsonl.zstd> [...]')
+  console.error('用法: node scripts/verify_real_shapes.mjs <会话目录 | .jsonl.zstd> [...]')
   process.exit(1)
 }
 

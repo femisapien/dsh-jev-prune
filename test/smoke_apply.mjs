@@ -9,7 +9,7 @@
  * 怎么跑：这个文件要放在**能解析到 @deepseek-ai/schemastery 与 dsh-tools** 的目录里，
  * 并且同目录的 node_modules 下要有插件副本（包名 `dsh-jev-prune`）。例如：
  *   cp <plugin>/{index,jev,state,prune,receipt}.js package.json  <ws>/_probe/node_modules/dsh-jev-prune/
- *   cp <plugin>/smoke_apply.mjs <ws>/_probe/ && cd <ws>/_probe && node smoke_apply.mjs
+ *   cp <plugin>/smoke_apply.mjs <ws>/_probe/ && cd <ws>/_probe && node test/smoke_apply.mjs
  * 不塞进 DSH 完整依赖树也能跑（那棵树要装 3~25 分钟，而这个只要 4 秒）。
  *
  * 假对象的事件/服务形状全部取自 DSH 源码，不是猜的：
