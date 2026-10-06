@@ -41,7 +41,7 @@ writeFileSync(probe,`import {readFileSync,writeFileSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';
 import {agentEvents} from '@deepseek-ai/dsh-agent';
 import {serviceForAgent} from '@deepseek-ai/dsh-agent-preset-registry';
-export const inject=['agents','agentPresets'];
+export const inject=['agents','agentPresets','agentLoop'];
 export function apply(ctx){ctx.effect(()=>{const timer=setTimeout(async()=>{let handle;try{
 handle=await ctx.agents.create({sessionId:randomUUID(),meta:{cwd:${JSON.stringify(host)},agentPreset:'standard'},setup:async scope=>{await ctx.agentPresets.mount(scope,'standard')}});
 const agent=handle.agent;

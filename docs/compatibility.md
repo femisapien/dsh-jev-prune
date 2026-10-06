@@ -18,6 +18,8 @@ The old 0.1.5-rc.3 publication omitted required child packages; caret ranges dri
 
 Startup reads the actual installed DSH version; the manifest supplies tested versions and supported families. Boot makes no registry requests and does not auto-update the host. Exact tested, untested-but-supported, unsupported and unknown versions are reported separately from service capabilities.
 
+Known-family diagnostics do not bypass declared peer ranges: a future prerelease may still be rejected by DSH's semver check until its tuple is explicitly accepted and verified.
+
 Legacy root services remain supported. New Web profiles isolate compaction inside Agent presets; the plugin calls the host's serviceForAgent API before the host pruning pass. It hooks each engine once and disposes hooks with the plugin. Presets without these services remain untouched. Unsupported shapes retain host fallback behavior.
 
 The tools peer range is `^0.1.5-rc.2 || ^0.2.0-rc.2`. It intentionally does not accept every future release. Successful verification should precede widening it further.

@@ -6,6 +6,7 @@
   "nodeVersion": "26.2.0",
   "published010Installation": "rejected by DSH peer compatibility check; nothing installed",
   "preparedArchiveInstallation": "passed through actual dsh plugin CLI",
+  "githubBranchInstallation": "passed through actual CLI with --ignore-scripts and no version exemption",
   "configurationComposition": "passed",
   "addonSmokeChecks": 130,
   "realStandardPresetActivation": {
