@@ -27,6 +27,9 @@
  * @module dsh-jev-prune
  */
 
+import { AsyncLocalStorage } from 'node:async_hooks'
+import { createHash } from 'node:crypto'
+import { isDeepStrictEqual } from 'node:util'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
@@ -596,6 +599,23 @@ export function apply(ctx, config, deps = {}) {
 
   /** session → Map(结果 seq → {keep, prob, effectProb, chars, tool}) */
   const decisions = new WeakMap()
+  const goalVersions = new WeakMap()
+  function refreshGoal(session) {
+    const events = sessionEvents(session)
+    const goals = events.filter(event => event?.type === 'user/message'
+      && !isCheckpointEvent(event)
+      && (event.data?.source?.kind == null || event.data.source.kind === 'user')
+      && eventText(event).trim().length > 0).slice(-3)
+    const version = createHash('sha256').update(JSON.stringify(goals.map(event => [event.seq, eventText(event)]))).digest('hex')
+    const previous = goalVersions.get(session)
+    if (previous != null && previous !== version) {
+      const cache = decisions.get(session)
+      for (const [seq, verdict] of cache ?? []) cache.set(seq, { ...verdict, prob: null, keep: true })
+      pressureRatios.set(session, 0)
+    }
+    goalVersions.set(session, version)
+    return { version, goal: recentGoal(events) }
+  }
   /**
    * session → 压力缺口比例（0~1）。judgePass（异步，能拿到 used/window）算好存这里，
    * pruneSession（同步，DSH 调）读它来决定「这一轮裁多少」。读不到 = 0 = 不裁。
@@ -825,6 +845,7 @@ export function apply(ctx, config, deps = {}) {
       stats.lastJudgeSkipReason = '没有活动会话'
       return
     }
+    const { version: goalVersion, goal } = refreshGoal(session)
     if (session.surface?.nodes == null || judge.ready === false) {
       // 早退也刷新压力比例（review 反馈）：否则沿用上一轮的值，陈旧。
       pressureRatios.set(session, 0)
@@ -981,7 +1002,6 @@ export function apply(ctx, config, deps = {}) {
       return
     }
 
-    const goal = recentGoal(sessionEvents(session))
     const { state, fitted, stateTokens } = buildJevState({
       surface,
       eventAt,
@@ -1042,6 +1062,13 @@ export function apply(ctx, config, deps = {}) {
         stats.judgeBatchFailures += 1
         log('info', `判定批次失败（${batchFailures}/${batches.length}）：${error?.message ?? String(error)}`)
         continue
+      }
+      if (refreshGoal(session).version !== goalVersion) {
+        stats.requests += judge.requests - startRequests
+        stats.skipped += fresh.length
+        stats.lastNote = '任务目标在判定期间改变，丢弃旧目标的响应'
+        pressureRatios.set(session, 0)
+        return
       }
       succeeded += 1
       // 遍历本批里的**候选**（一个候选有两个题号 result_sN / effect_sN）。
@@ -1132,6 +1159,7 @@ export function apply(ctx, config, deps = {}) {
   // 逐节点裁决逻辑放在 prune.js 里（纯函数 + 依赖注入），这样才能脱离 DSH 单测。
   // 这里只负责补齐它需要的依赖。
   function pruneViaJev(pruner, session) {
+    refreshGoal(session)
     const nameByCallId = buildToolNameIndex(sessionEvents(session))
     const out = pruneSessionWithJev({
       pruner,
@@ -1197,24 +1225,11 @@ export function apply(ctx, config, deps = {}) {
   // 发起的压缩（DSH 自己的自动压缩、另一条并发路径）都会调到 summarize，把回执抢走——
   // 结果是"别人那段被换成了我们的确定性回执，而我们要压的那段反而用了模型摘要"。
   //
-  // 修法分两层，缺一不可：
-  //   ① **归属令牌（fencing token）**：每次 compactRegion 前发一个新令牌，并把它记在
-  //      `activeFence` 上。summarize 只在「当前 activeFence === 待用回执的令牌」时才注入——
-  //      即证明"这次 summarize 是在我们那次 compactRegion 的调用栈/时序内发生的"。
-  //      await 期间若被别处的调用抢先，activeFence 会被对方改写，我们自然不注入。
-  //   ② **一次性领取（claim-once）**：回执被消费后立刻 delete，且令牌是一次性的，
-  //      防止同一次压缩里 summarize 被调用多次时重复注入。
-  //   ③ **归属校验（owner check）**：compactRegion 返回后核对令牌是否仍属于本次调用，
-  //      不属于则说明中途被打断，如实记进 action，不谎报成功。
-  let fenceCounter = 0
-  /**
-   * 当前"活跃"的压缩令牌。每次我们要调 compactRegion 时自增并置为最新值；
-   * summarize 只在待用回执的令牌与之相等时才注入。它是"归属证明"：
-   * 我们那次 compactRegion 里面派发的 summarize 一定看到自己的令牌，
-   * 而 await 期间被别处抢先发起的压缩会把它改写成对方的令牌。
-   */
-  let activeFence = 0
-  const pendingReceipt = new WeakMap()
+  // AsyncLocalStorage supplies transaction identity across await boundaries.
+  // Host region entry clears inherited ownership; exact input matching is an
+  // additional guard for direct summarize calls inside the producer chain.
+  const receiptContext = new AsyncLocalStorage()
+  let runReceiptCompaction = null
 
   function summaryService() {
     return ctx.get?.('compaction') ?? ctx.compaction ?? null
@@ -1232,17 +1247,25 @@ export function apply(ctx, config, deps = {}) {
       writeHeartbeat()
       return () => {}
     }
-    const original = compaction.summarize.bind(compaction)
-    compaction.summarize = async (input, agent, signal) => {
-      const entry = pendingReceipt.get(agent?.session)
-      // 三道闸都要过才算"这是我们的那一次"（issue #29）：
-      //   · entry 存在、未过期
-      //   · 未被领取（claimed）—— 同一次压缩里 summarize 若被多次调用，只注入一次
-      //   · 令牌仍是当前活跃令牌 —— 证明这次 summarize 发生在我们那次 compactRegion 之内，
-      //     而不是被 await 期间别处的并发压缩抢先调用
+    const original = compaction.summarize
+    const originalRegion = compaction.compactRegion
+    if (typeof originalRegion !== 'function') {
+      summaryHook.reason = 'compaction.compactRegion 不是函数'
+      return () => {}
+    }
+    const wrappedRegion = (...args) => receiptContext.run(undefined, () => originalRegion.apply(compaction, args))
+    runReceiptCompaction = (entry, ...args) => receiptContext.run(entry, () => originalRegion.apply(compaction, args))
+    const wrappedSummarize = async (input, agent, signal) => {
+      const entry = receiptContext.getStore()
+      const messages = input?.messages
+      const matches = entry != null && Array.isArray(messages)
+        && (isDeepStrictEqual(messages, entry.messages)
+          || (messages.length === entry.messages.length + 1 && messages[0]?.role === 'system'
+            && isDeepStrictEqual(messages.slice(1), entry.messages)))
+      // Require both async transaction ownership and matching replay input.
       if (entry != null
         && !entry.claimed
-        && entry.fence === activeFence
+        && !entry.closed && entry.session === agent?.session && matches && !signal?.aborted
         && Date.now() - entry.at < 5 * 60 * 1000) {
         entry.claimed = true
         stats.receiptSummaries += 1
@@ -1252,18 +1275,17 @@ export function apply(ctx, config, deps = {}) {
           model: 'deterministic',
         }
       }
-      // 不是我们的：如实退回原实现，绝不吞掉别人的摘要。
-      // 若 entry 存在但令牌不匹配，说明恰好撞上竞态 —— 记一笔，让"回执被抢"可观测。
-      if (entry != null && !entry.claimed && entry.fence !== activeFence) {
-        stats.receiptFenceMisses += 1
-      }
-      return original(input, agent, signal)
+      // Foreign, canceled or shape-mismatched calls use the original backend.
+      return original.call(compaction, input, agent, signal)
     }
+    compaction.summarize = wrappedSummarize
+    compaction.compactRegion = wrappedRegion
     summaryHook = { attempted: true, installed: true, reason: 'ok' }
     log('info', `已接管 ctx.compaction.summarize（回执模式；compactOn=${cfg.compactOn}, quantile=${cfg.compactQuantile}）`)
     writeHeartbeat()
     return () => {
-      compaction.summarize = original
+      if (compaction.summarize === wrappedSummarize) compaction.summarize = original
+      if (compaction.compactRegion === wrappedRegion) compaction.compactRegion = originalRegion
     }
   }
 
@@ -1327,6 +1349,7 @@ export function apply(ctx, config, deps = {}) {
       report.blocked = '没有活动会话'
       return report
     }
+    refreshGoal(session)
     const compaction = summaryService()
     if (compaction == null || typeof compaction.compactRegion !== 'function') {
       report.blocked = 'ctx.compaction 不可用（compactRegion 缺失）'
@@ -1559,17 +1582,15 @@ export function apply(ctx, config, deps = {}) {
         continue
       }
 
-      // 发一个一次性令牌并抢占 activeFence（issue #29）。
-      // 之后若别处的并发压缩改写了 activeFence，我们这次的 summarize 就不会注入回执，
-      // 也就不会把别人的区间替换成我们的回执——那是原实现最危险的失败模式。
-      const fence = (fenceCounter += 1)
-      activeFence = fence
-      pendingReceipt.set(session, { text: receipt, at: Date.now(), fence, claimed: false })
+      // The receipt is scoped to this transaction, including asynchronous work.
+      const entry = {
+        session, text: receipt, at: Date.now(), claimed: false, closed: false,
+        messages: structuredClone(spanSeqs.map(seq => session.deriveEventMessage(session.eventAt(seq))).filter(message => message != null)),
+      }
       try {
-        const result = await compaction.compactRegion(range.start, range.end, agent, options.signal)
-        // 归属校验：compactRegion 返回时令牌若已被别人改写，说明这次压缩中途被打断
-        // （或我们的回执被别人消费了）。此时不能谎报成功——如实记下来。
-        if (activeFence !== fence) {
+        const result = await runReceiptCompaction(entry, range.start, range.end, agent, options.signal)
+        action.receiptInjected = entry.claimed
+        if (!entry.claimed) {
           stats.receiptFenceMisses += 1
           action.fenceLost = true
         }
@@ -1592,11 +1613,8 @@ export function apply(ctx, config, deps = {}) {
         action.error = error?.message ?? String(error)
         report.actions.push(action)
       } finally {
-        // 只清理**自己**的令牌：若期间已被别人改写，那个令牌归对方管，不要去动它
-        // （原实现无论谁覆盖都无条件 delete(session)，会把别人的待用回执一起清掉）
-        const current = pendingReceipt.get(session)
-        if (current?.fence === fence) pendingReceipt.delete(session)
-        if (activeFence === fence) activeFence = 0
+        // Descendant tasks cannot claim a receipt after the producer finished.
+        entry.closed = true
       }
     }
 
@@ -1632,6 +1650,7 @@ export function apply(ctx, config, deps = {}) {
           start: a.start, end: a.end, ok: a.ok ?? null, dryRun: a.dryRun ?? null,
           calls: a.calls, resultChars: a.resultChars, receiptTokens: a.receiptTokens,
           shadowedTokens: a.shadowedTokens, partial: a.partial ?? false,
+          receiptInjected: a.receiptInjected ?? null, fenceLost: a.fenceLost ?? false,
           partialResults: a.partialResults ?? null, incomplete: a.incomplete ?? false,
           error: a.error ?? null, skipped: a.skipped ?? null,
         })),

@@ -7,7 +7,7 @@
 
 [English](README.md) · **简体中文**
 
-![license](https://img.shields.io/badge/license-MIT-blue) ![node](https://img.shields.io/badge/node%20%3E%3D22.19-339933) ![dsh](https://img.shields.io/badge/DSH-0.1.x--rc-orange) [![CI](https://github.com/yangyu666/dsh-jev-prune/actions/workflows/ci.yml/badge.svg)](https://github.com/yangyu666/dsh-jev-prune/actions/workflows/ci.yml) ![smoke checks](https://img.shields.io/badge/smoke%20checks-113%20passing-success) [![Listed on dsh-plugin.org](https://dsh-plugin.org/badges/listed.svg)](https://dsh-plugin.org/plugins/yangyu666/dsh-jev-prune)
+![license](https://img.shields.io/badge/license-MIT-blue) ![node](https://img.shields.io/badge/node%20%3E%3D22.19-339933) ![dsh](https://img.shields.io/badge/DSH-0.1.x--rc-orange) [![CI](https://github.com/yangyu666/dsh-jev-prune/actions/workflows/ci.yml/badge.svg)](https://github.com/yangyu666/dsh-jev-prune/actions/workflows/ci.yml) ![smoke checks](https://img.shields.io/badge/smoke%20checks-127%20passing-success) [![Listed on dsh-plugin.org](https://dsh-plugin.org/badges/listed.svg)](https://dsh-plugin.org/plugins/yangyu666/dsh-jev-prune)
 
 ## 它解决什么问题
 
@@ -146,8 +146,8 @@ dsh plugin --profile web add link:/absolute/path/to/dsh-jev-prune
 
 - 在线判定会将历史、路径、代码片段和命令输出发送至 TypeSafe，并增加判定成本与延迟。
 - CI 验证纯函数、模拟宿主行为和锁定宿主依赖树的模块加载；尚不覆盖真实 DSH 会话端到端执行。
-- 回执只能领取一次，但当前令牌无法识别外部并发摘要的事务归属；应避免并发压缩。[审查记录](docs/review-2026-10-05.md)
-- 结果判定按序号缓存，任务目标变化不会使其失效；第一层小样本降级可能在压力比例为零时裁剪。
+- 当前源码将回执绑定到异步事务，并核对所选区间的实际消息；外部、取消或输入不匹配的摘要回退宿主。已发布的 0.1.0 仍使用旧机制。[架构说明](docs/ARCHITECTURE.md)
+- 当前源码在最近三条用户指令变化时使结果判断失效，保留副作用判断，并丢弃旧目标的在途响应。第一层小样本降级仍可能在压力比例为零时裁剪。
 - `jev_restore` 只查区域摘要检查点，每个事件最多返回 4,000 个 UTF-16 单元，尚不能直接解析第一层或逐结果替换的 ID。原始事件仍保存在日志中。
 
 ## 目录与开发

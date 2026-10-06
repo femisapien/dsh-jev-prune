@@ -226,7 +226,7 @@ function makeCompaction(session) {
       const endIdx = nodes.indexOf(end)
       if (startIdx < 0 || endIdx < 0 || startIdx > endIdx) throw new Error(`compactRegion: 非法区间 ${start}-${end}`)
       // 关键：模拟后端内部这一次动态派发 —— 猴补丁必须在这里被调用到
-      const summarized = await this.summarize({ messages: [] }, agent, signal)
+      const summarized = await this.summarize({ messages: nodes.slice(startIdx, endIdx + 1).map(seq => session.deriveEventMessage(session.eventAt(seq))).filter(message => message != null) }, agent, signal)
       const text = summarized.summary.map((b) => b.text ?? '').join('')
       calls.push({ start, end, nodes: nodes.slice(startIdx, endIdx + 1), summary: text, provider: summarized.provider })
       return {
@@ -698,13 +698,13 @@ async function layer2Run(effectOfS2) {
   let intruderResult = null
   const innerCompact = compaction.compactRegion.bind(compaction)
   compaction.compactRegion = async (start, end, agent, signal) => {
-    const first = await innerCompact(start, end, agent, signal)
-    // 第一次完成后，让"别处"再发起一次压缩并观察它拿到什么 provider
+    await Promise.resolve()
+    // Competing direct summary arrives before the intended region summary.
     if (intruderResult == null) {
       intruderResult = await compaction.summarize({ messages: ['elsewhere'] }, agent, signal)
       compaction.intruderProvider = intruderResult?.provider ?? null
     }
-    return first
+    return await innerCompact(start, end, agent, signal)
   }
 
   const ctx = makeCtx({ pruner, session, compaction })
@@ -1348,6 +1348,139 @@ async function layer2Run(effectOfS2) {
     compaction.calls.length > 0, `实际压缩 ${compaction.calls.length} 段`)
 }
 
+// Regression #48: independent summaries cannot inherit another async transaction.
+{
+  const session = makeSession()
+  const pruner = makePruner()
+  const compaction = makeCompaction(session)
+  const originalRegion = compaction.compactRegion.bind(compaction)
+  let entered
+  const started = new Promise(resolve => { entered = resolve })
+  let release
+  const barrier = new Promise(resolve => { release = resolve })
+  compaction.compactRegion = async (...args) => {
+    entered()
+    await barrier
+    return originalRegion(...args)
+  }
+  const ctx = makeCtx({ pruner, session, compaction })
+  const judge = fakeJudge({3:0.05,5:0.05,7:0.05},{3:0.05,5:0.05,7:0.05})
+  mod.apply(ctx,{...PLUGIN_CFG,compactQuantile:1,minCandidatesForRelative:3},{judge})
+  const agent = {session,options:{}}
+  const pending = ctx.waterfall('agent/pre-step',{agent},()=>{})
+  await started
+  const messages = session.surface.nodes.slice(1,-1).map(seq=>session.deriveEventMessage(session.eventAt(seq)))
+  const foreign = await compaction.summarize({messages},agent)
+  check('独立异步摘要即使输入相同也不能领取插件回执',foreign.provider==='fake',foreign.provider)
+  release()
+  await pending
+  check('外部摘要先到后插件事务仍获得自己的回执',compaction.calls[0]?.provider==='jev-receipt')
+}
+// Regression #48: one apply instance may compact two sessions concurrently.
+{
+  const sessionA=makeSession(), sessionB=makeSession()
+  sessionB.eventAt(2).data.message.content[0].text='Different session'
+  const pruner=makePruner(), compaction=makeCompaction(sessionA)
+  const providers=[]
+  let release
+  const barrier=new Promise(resolve=>{release=resolve})
+  let entered=0
+  compaction.compactRegion=async(start,end,agent,signal)=>{
+    if(++entered===2)release()
+    await barrier
+    const nodes=agent.session.surface.nodes
+    const seqs=nodes.slice(nodes.indexOf(start),nodes.indexOf(end)+1)
+    const input={messages:seqs.map(seq=>agent.session.deriveEventMessage(agent.session.eventAt(seq)))}
+    const first=await compaction.summarize(input,agent,signal)
+    const repeated=await compaction.summarize(input,agent,signal)
+    providers.push([first.provider,repeated.provider])
+    return {shadowedSeqs:seqs}
+  }
+  const ctx=makeCtx({pruner,session:sessionA,compaction})
+  const judge=fakeJudge({3:0.05,5:0.05,7:0.05},{3:0.05,5:0.05,7:0.05})
+  mod.apply(ctx,{...PLUGIN_CFG,compactQuantile:1,minCandidatesForRelative:3},{judge})
+  await Promise.all([sessionA,sessionB].map(session=>ctx.waterfall('agent/pre-step',{agent:{session,options:{}}},()=>{})))
+  check('不同会话并发压缩均只领取各自回执一次',providers.length===2&&providers.every(([a,b])=>a==='jev-receipt'&&b==='fake'),JSON.stringify(providers))
+}
+// Regression #49: goal edits invalidate result but not effect, including replacements.
+{
+  const session=makeSession(), pruner=makePruner(), compaction=makeCompaction(session)
+  const ctx=makeCtx({pruner,session,compaction})
+  const result={3:0.05,5:0.05,7:0.05}
+  const judge=fakeJudge(result,{3:0.05,5:0.05,7:0.05})
+  judge.asked=[]
+  const ask=judge.ask.bind(judge)
+  judge.ask=async(state,questions)=>{judge.asked.push(Object.keys(questions));return ask(state,questions)}
+  mod.apply(ctx,{...PLUGIN_CFG,compactOn:'off'},{judge})
+  const exec={agent:{session,options:{}}}
+  await ctx.waterfall('agent/pre-step',exec,()=>{})
+  await ctx.waterfall('agent/pre-step',exec,()=>{})
+  check('目标不变不重复判定',judge.requests===1)
+  session.append('user/message',{content:[{type:'text',text:'Use the earlier read for a new task'}],source:{kind:'user'}},{surfaceOp:'append'})
+  check('新目标出现后同步裁剪不能沿用旧低分',pruner.pruneSession(session).pruned.length===0)
+  await ctx.waterfall('agent/pre-step',exec,()=>{})
+  check('新目标只补判 result 轴，保留已有 effect',judge.asked[1]?.length===3&&judge.asked[1].every(id=>id.startsWith('result_s')),JSON.stringify(judge.asked[1]))
+  const trimmed=pruner.pruneSession(session)
+  check('补判完成后第一层可生成 replacement',trimmed.pruned.length===3)
+  for (const row of trimmed.pruned) result[row.replacementSeq]=0.95
+  session.append('user/message',{content:[{type:'text',text:'Another goal requiring old results'}],source:{kind:'user'}},{surfaceOp:'append'})
+  await ctx.waterfall('agent/pre-step',exec,()=>{})
+  check('replacement 继承的旧 result 被失效并重新请求',judge.asked[2]?.length===3&&judge.asked[2].every(id=>id.startsWith('result_s')),JSON.stringify(judge.asked[2]))
+  const newest=session.eventAt(session.surface.nodes.at(-1))
+  newest.data.content[0].text='x'.repeat(600)+'old suffix'
+  await ctx.waterfall('agent/pre-step',exec,()=>{})
+  const requestsBeforeEdit=judge.requests
+  newest.data.content[0].text='x'.repeat(600)+'new suffix'
+  await ctx.waterfall('agent/pre-step',exec,()=>{})
+  check('同 seq 指令在 500 字之后变化也使缓存失效',judge.requests===requestsBeforeEdit+1)
+}
+// Regression #49: late answers must not repopulate a stale-goal cache.
+{
+  const session=makeSession(), pruner=makePruner(), compaction=makeCompaction(session)
+  const ctx=makeCtx({pruner,session,compaction})
+  const judge=fakeJudge({3:0.05,5:0.05,7:0.05},{3:0.05,5:0.05,7:0.05})
+  const ask=judge.ask.bind(judge)
+  judge.ask=async(state,questions)=>{
+    const answer=await ask(state,questions)
+    if(judge.requests===1)session.append('user/message',{content:[{type:'text',text:'Goal changed during request'}],source:{kind:'user'}},{surfaceOp:'append'})
+    return answer
+  }
+  mod.apply(ctx,{...PLUGIN_CFG,compactOn:'off'},{judge})
+  const exec={agent:{session,options:{}}}
+  await ctx.waterfall('agent/pre-step',exec,()=>{})
+  check('请求中目标变化时不写入旧目标低分',pruner.pruneSession(session).pruned.length===0)
+  await ctx.waterfall('agent/pre-step',exec,()=>{})
+  check('下一轮仍请求新目标判定',judge.requests===2)
+}
+// Review follow-up: host-owned nested regions and leading system messages.
+{
+  const session=makeSession(),pruner=makePruner(),compaction=makeCompaction(session)
+  let own=false
+  let nestedProvider
+  let canceledProvider
+  compaction.compactRegion=async(start,end,agent,signal)=>{
+    const nodes=session.surface.nodes
+    const seqs=nodes.slice(nodes.indexOf(start),nodes.indexOf(end)+1)
+    const messages=seqs.map(seq=>session.deriveEventMessage(session.eventAt(seq)))
+    if(!own){
+      own=true
+      // This call uses the public entry and must clear the inherited owner.
+      nestedProvider=(await compaction.compactRegion(start,end,agent,signal)).provider
+      const abort=new AbortController();abort.abort()
+      canceledProvider=(await compaction.summarize({messages},agent,abort.signal)).provider
+      const result=await compaction.summarize({messages:[{role:'system',content:[]},...messages]},agent,signal)
+      check('合法 system 前缀仍允许事务回执',result.provider==='jev-receipt')
+      return {shadowedSeqs:seqs}
+    }
+    return compaction.summarize({messages},agent,signal)
+  }
+  const ctx=makeCtx({pruner,session,compaction})
+  const judge=fakeJudge({3:0.05,5:0.05,7:0.05},{3:0.05,5:0.05,7:0.05})
+  mod.apply(ctx,{...PLUGIN_CFG,compactQuantile:1,minCandidatesForRelative:3},{judge})
+  await ctx.waterfall('agent/pre-step',{agent:{session,options:{}}},()=>{})
+  check('嵌套的宿主 region 不继承插件回执归属',nestedProvider==='fake',nestedProvider)
+  check('已中断摘要不能消耗回执',canceledProvider==='fake',canceledProvider)
+}
 // ---------------------------------------------------------------- 汇总
 console.log()
 for (const r of results) console.log(`${r.ok ? '  ✅' : '  ❌'} ${r.name}${r.detail ? `  — ${r.detail}` : ''}`)

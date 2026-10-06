@@ -62,9 +62,9 @@ Probabilities are consumed as **relative quantiles**, never as a fixed threshold
 
 ## Receipt ownership (fence)
 
-The plugin assigns a token to each pending receipt, permits only one consumption, and clears only its own pending entry. This guards against duplicate consumption, but does not establish ownership of an external concurrent summary: external host paths do not update the plugin's active token. The original smoke C3 test checks a competing call after consumption, not competing arrival before consumption.
+In published 0.1.0, the global fence did not establish transaction ownership. Current unreleased source scopes each receipt through AsyncLocalStorage, clears inherited ownership at the public host region entry, and verifies replay messages and session before injection. A legitimate single leading system message is allowed. A claimed, closed, expired or canceled entry cannot be reused.
 
-Until transaction identity is propagated or all entry paths are serialized, do not claim concurrency safety. [Reproduction and suggested remedy](review-2026-10-05.md#p1--external-summary-can-consume-another-transactions-receipt)
+Tests cover both arrival orders, matching-input external summaries, concurrent sessions, nested host regions, system prefixes and cancellation. Different backend input shapes fall back to the host summarizer; host locks and surface mutation checks remain necessary. [Original 0.1.0 reproduction](review-2026-10-05.md#p1--external-summary-can-consume-another-transactions-receipt)
 
 ## Requirements
 
