@@ -1,6 +1,6 @@
 {
   "name": "dsh-jev-prune",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Jev-judged context compaction for DeepSeek Harness. Two layers: prune stale tool results (semantic instead of size-only), and replace spent tool-call ranges with a deterministic receipt instead of a model-written summary.",
   "type": "module",
   "main": "index.js",
@@ -32,11 +32,12 @@
     "check": "node test/check.js",
     "smoke": "node test/smoke_apply.mjs",
     "demo": "node demo/run.mjs",
-    "coverage": "node --experimental-test-coverage --test --test-coverage-include=src/jev.js --test-coverage-include=src/prune.js --test-coverage-include=src/receipt.js --test-coverage-include=src/state.js --test-coverage-lines=90 --test-coverage-branches=75 --test-coverage-functions=75 test/check.js test/smoke_apply.mjs"
+    "verify:current-host": "node scripts/verify_current_host.mjs",
+    "coverage": "node --experimental-test-coverage --test --test-coverage-include=src/compatibility.js --test-coverage-include=src/jev.js --test-coverage-include=src/prune.js --test-coverage-include=src/receipt.js --test-coverage-include=src/state.js --test-coverage-lines=90 --test-coverage-branches=75 --test-coverage-functions=75 test/check.js test/smoke_apply.mjs"
   },
   "peerDependencies": {
-    "@deepseek-ai/dsh-tools": "^0.1.5-rc.2",
-    "@deepseek-ai/schemastery": "*"
+    "@deepseek-ai/dsh-tools": "^0.1.5-rc.2 || ^0.2.0-rc.2",
+    "@deepseek-ai/schemastery": "^3.18.2"
   },
   "devDependencies": {
     "@deepseek-ai/dsh-llm": "0.1.5-rc.2",
@@ -71,7 +72,9 @@
     },
     "compatibility": {
       "testedAgainst": "@deepseek-ai/dsh@0.1.5-rc.2",
-      "note": "DSH 0.1.x is a pre-release line; plugin-facing surfaces (event shapes, service names) may change between rc versions. After upgrading DSH, run `node test/check.js` and the smoke test, and use the `jev_probe_shapes` tool once in a real session."
+      "testedVersions": ["0.1.5-rc.2", "0.2.0-rc.2"],
+      "supportedSeries": ["0.1", "0.2"],
+      "note": "Version detection is dynamic; testedVersions records evidence, not a runtime pin. Unknown versions are reported and services are inspected. Latest-host install/activation is checked separately from the locked 0.1.5-rc.2 fixture."
     }
   }
 }

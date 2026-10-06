@@ -71,6 +71,8 @@ Probabilities are consumed as **relative quantiles**, never as a fixed threshold
 
 ## Install and quick start
 
+**Version note:** published npm 0.1.0 is rejected by current DSH 0.2.0-rc.2. Prepared 0.1.1 source supports both root and preset-local services and passed actual CLI installation/activation. It must be merged and published before npm can select that version. [Compatibility evidence and rolling verification](docs/compatibility.md).
+
 Requires Node `^22.19.0 || >=24.0.0`; tested against **DSH 0.1.5-rc.2**. The profile needs base pruner/compaction and tokenMeter services. Set `TYPESAFE_API_KEY` in the environment before starting DSH.
 
 Install a pinned version:

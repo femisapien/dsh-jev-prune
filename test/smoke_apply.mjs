@@ -351,7 +351,7 @@ try {
 }
 
 check('导出 name', typeof mod.name === 'string' && mod.name.length > 0, mod.name)
-check('导出 inject 含 tools', Array.isArray(mod.inject) && mod.inject.includes('tools'), JSON.stringify(mod.inject))
+check('导出 inject 仅要求根级 tools（不等待 preset 的 pruner）', Array.isArray(mod.inject) && mod.inject.includes('tools') && !mod.inject.includes('toolResultPruner'), JSON.stringify(mod.inject))
 check('导出 apply', typeof mod.apply === 'function')
 
 // 可选的 dsh-llm 不存在时必须走可测的浅拷贝降级；恒等函数会让后续代码意外复用入参。
@@ -1480,6 +1480,31 @@ async function layer2Run(effectOfS2) {
   await ctx.waterfall('agent/pre-step',{agent:{session,options:{}}},()=>{})
   check('嵌套的宿主 region 不继承插件回执归属',nestedProvider==='fake',nestedProvider)
   check('已中断摘要不能消耗回执',canceledProvider==='fake',canceledProvider)
+}
+// ---------------------------------------------------------------- 汇总
+{
+  const sessionA=makeSession(),sessionB=makeSession()
+  const prunerA=makePruner(),prunerB=makePruner()
+  const compactionA=makeCompaction(sessionA),compactionB=makeCompaction(sessionB)
+  const ctx=makeCtx({pruner:prunerA,session:sessionA,compaction:compactionA})
+  const get=ctx.get
+  const meter=ctx.tokenMeter
+  delete ctx.compaction
+  delete ctx.tokenMeter
+  ctx.get=name=>['toolResultPruner','compaction','tokenMeter'].includes(name)?null:get(name)
+  const originalA=prunerA.pruneSession,originalB=prunerB.pruneSession
+  const services=new WeakMap()
+  const agentA={ctx:{},session:sessionA,options:{}},agentB={ctx:{},session:sessionB,options:{}}
+  services.set(agentA,{toolResultPruner:prunerA,compaction:compactionA,tokenMeter:meter})
+  services.set(agentB,{toolResultPruner:prunerB,compaction:compactionB,tokenMeter:meter})
+  const judge=fakeJudge({3:0.05,5:0.05,7:0.05},{3:0.05,5:0.05,7:0.05})
+  mod.apply(ctx,{...PLUGIN_CFG,compactQuantile:1,minCandidatesForRelative:3},
+    {judge,serviceForAgent:(_ctx,agent,name)=>services.get(agent)?.[name]})
+  check('根级无 pruner 时插件仍注册执行前钩子',ctx.handlers.get('agent/pre-step')?.length===2)
+  await ctx.waterfall('agent/pre-step',{agent:agentA},()=>{})
+  await ctx.waterfall('agent/pre-step',{agent:agentB},()=>{})
+  check('两个 preset 的 pruner 分别接管',prunerA.pruneSession!==originalA&&prunerB.pruneSession!==originalB)
+  check('两个 preset 的回执进入各自引擎',compactionA.calls[0]?.provider==='jev-receipt'&&compactionB.calls[0]?.provider==='jev-receipt')
 }
 // ---------------------------------------------------------------- 汇总
 console.log()

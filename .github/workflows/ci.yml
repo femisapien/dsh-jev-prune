@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    - cron: '0 3 * * 1'
 
 jobs:
   # 快速冒烟：只装两个静态 peer 依赖（几秒），跑全部纯函数自检 + 假 ctx 冒烟测试
@@ -119,3 +121,17 @@ jobs:
         run: |
           node test/check.js
           node test/smoke_apply.mjs
+
+  current-host:
+    name: current DSH channel install and preset activation (advisory)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci --no-audit --no-fund
+      - run: npm install --global pnpm@11.19.0 --no-audit --no-fund
+      - run: npm run verify:current-host
+      # Broken upstream publications are reported separately from locked tests.

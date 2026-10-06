@@ -1,0 +1,23 @@
+{
+  "verifiedOn": "2026-10-06",
+  "hostVersion": "0.2.0-rc.2",
+  "pluginSourceVersion": "0.1.1",
+  "platform": "Windows",
+  "nodeVersion": "26.2.0",
+  "published010Installation": "rejected by DSH peer compatibility check; nothing installed",
+  "preparedArchiveInstallation": "passed through actual dsh plugin CLI",
+  "configurationComposition": "passed",
+  "addonSmokeChecks": 130,
+  "realStandardPresetActivation": {
+    "success": true,
+    "pruner": "function",
+    "compaction": "function",
+    "takeoverInstalled": true,
+    "summaryHookInstalled": true,
+    "capabilities": {"tools": true, "layer1": true, "layer2": true, "pressure": true, "modelInfo": true}
+  },
+  "modelInference": "not invoked",
+  "nativeBuildScripts": "skipped",
+  "reproduce": "npm run verify:current-host",
+  "scope": "Installation and real service attachment, not live judge quality or long-task compaction success"
+}

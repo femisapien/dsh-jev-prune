@@ -4,6 +4,8 @@ This document describes the host surface required to run `dsh-jev-prune` outside
 
 ## Services
 
+Current source detects the host dynamically and resolves preset-local services through the optional host `serviceForAgent` API. Required root injection is limited to tools; pruner/compaction services are retried for the actual Agent. The old locked fixture is a regression baseline. See [compatibility evidence](compatibility.md).
+
 The adapter in `index.js` consumes these services:
 
 | Service | Required behaviour |

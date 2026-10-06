@@ -20,6 +20,8 @@ flowchart LR
 
 ## Modules
 
+- `compatibility.js` separates actual runtime version, verified-version evidence and service capabilities. The manifest owns supported release families.
+
 - `jev.js` owns the remote judge protocol, retry classification, batching, and local token estimation.
 - `prune.js` contains layer-1 pure logic: cached-verdict lookup, pressure-budget planning, code-point-safe slicing, and DSH-compatible replacement events.
 - `state.js` converts session events into the bounded state and questions sent to Jev. It also discovers tool names and selects candidates.
@@ -29,6 +31,8 @@ flowchart LR
 The dependency direction stays toward the pure modules. Host APIs must remain in `index.js`; moving them into `prune.js` or `receipt.js` would make the safety logic harder to test outside DSH.
 
 ## Runtime flow
+
+New Web profiles isolate compaction services in presets. The root plugin only injects tools, then resolves the active Agent's pruner, compaction and meter through the host `serviceForAgent` API before the base pruning hook. Per-engine hook maps prevent cross-preset sharing; legacy root services remain supported. [Compatibility verification](compatibility.md).
 
 1. A prepended `agent/pre-step` hook builds the current state and asks Jev only for missing verdict axes.
 2. DSH's `compaction-basic` hook calls the synchronously overridden `toolResultPruner.pruneSession`. Layer 1 reads the verdict cache and replaces stale result bodies with head/marker/tail content.
