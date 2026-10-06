@@ -7,7 +7,7 @@ Structured judgments from [TypeSafe Jev](https://typesafe.ai) drive DSH's two-la
 
 **English** · [简体中文](README_zh.md)
 
-![license](https://img.shields.io/badge/license-MIT-blue) ![node](https://img.shields.io/badge/node%20%3E%3D22.19-339933) ![dsh](https://img.shields.io/badge/DSH-0.1.x--rc-orange) [![CI](https://github.com/yangyu666/dsh-jev-prune/actions/workflows/ci.yml/badge.svg)](https://github.com/yangyu666/dsh-jev-prune/actions/workflows/ci.yml) ![smoke checks](https://img.shields.io/badge/smoke%20checks-127%20passing-success) [![Listed on dsh-plugin.org](https://dsh-plugin.org/badges/listed.svg)](https://dsh-plugin.org/plugins/yangyu666/dsh-jev-prune)
+![license](https://img.shields.io/badge/license-MIT-blue) ![node](https://img.shields.io/badge/node%20%3E%3D22.19-339933) ![dsh](https://img.shields.io/badge/DSH-0.1.x--rc-orange) [![CI](https://github.com/yangyu666/dsh-jev-prune/actions/workflows/ci.yml/badge.svg)](https://github.com/yangyu666/dsh-jev-prune/actions/workflows/ci.yml) ![smoke checks](https://img.shields.io/badge/smoke%20checks-130%20passing-success) [![Listed on dsh-plugin.org](https://dsh-plugin.org/badges/listed.svg)](https://dsh-plugin.org/plugins/yangyu666/dsh-jev-prune)
 
 ## The problem it solves
 
@@ -71,12 +71,16 @@ Probabilities are consumed as **relative quantiles**, never as a fixed threshold
 
 ## Install and quick start
 
-Requires Node `^22.19.0 || >=24.0.0`; tested against **DSH 0.1.5-rc.2**. The profile needs base pruner/compaction and tokenMeter services. Set `TYPESAFE_API_KEY` in the environment before starting DSH.
+**Version note:** use 0.1.1 for DSH 0.2.0-rc.2. It supports both root and preset-local services and passed actual CLI installation/activation; older 0.1.0 is rejected by this host. [Compatibility evidence and rolling verification](docs/compatibility.md).
+
+Requires Node `^22.19.0 || >=24.0.0`. Regression baseline: **DSH 0.1.5-rc.2**; real CLI install/preset activation verified on **0.2.0-rc.2**. The profile needs pruner/compaction and tokenMeter services. Set `TYPESAFE_API_KEY` before starting DSH.
 
 Install a pinned version:
 
 ```bash
-dsh plugin --profile web add github:yangyu666/dsh-jev-prune#v0.1.0
+dsh plugin --profile web add dsh-jev-prune@0.1.1
+# GitHub alternative:
+dsh plugin --profile web add github:yangyu666/dsh-jev-prune#v0.1.1
 ```
 
 Local development:
@@ -84,7 +88,7 @@ Local development:
 ```bash
 git clone https://github.com/yangyu666/dsh-jev-prune.git
 cd dsh-jev-prune
-git checkout v0.1.0
+git checkout v0.1.1
 npm ci
 npm run check
 npm run smoke
@@ -98,16 +102,14 @@ Without pnpm, run `node scripts/wire_profile.mjs <DSH_HOME> <profile-name>`. Aft
 Start with a dry run in the profile's plugin entry:
 
 ```yaml
-- insert:
-    - id: jev-prune
-      name: dsh-jev-prune
-      config:
-        dryRun: true
-        judgeOn: pressure
-        softLimit: "55%"
-        compactReceipts: true
-        compactOn: pressure
-        compactSoftLimit: "70%"
+- id: jev-prune
+  config:
+    dryRun: true
+    judgeOn: pressure
+    softLimit: "55%"
+    compactReceipts: true
+    compactOn: pressure
+    compactSoftLimit: "70%"
 ```
 
 After inspecting `/jev`, set `dryRun: false` to apply reductions.

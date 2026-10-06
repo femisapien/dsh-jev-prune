@@ -39,6 +39,7 @@ import z from '@deepseek-ai/schemastery'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 
 import { JevClient, estimateTokens } from './src/jev.js'
+import { classifyHostVersion, inspectHostCapabilities } from './src/compatibility.js'
 import { JEV_PRUNE_MARKER, isToolIn, parseLimit, pruneSessionWithJev } from './src/prune.js'
 import {
   DEFAULT_COMPACT_TOOLS,
@@ -82,8 +83,8 @@ import {
  *   · 记进心跳与状态（可观测）
  *   · major.minor 与测试版本不一致时打一次 warning（不拒绝加载——也许只是字段没变）
  */
-const TESTED_DSH_VERSION = '0.1.5-rc.2'
-const TESTED_DSH_SERIES = '0.1'
+const HOST_POLICY = JSON.parse(readFileSync(fileURLToPath(new URL('./package.json', import.meta.url)), 'utf8')).dsh.compatibility
+const TESTED_DSH_VERSION = HOST_POLICY.testedVersions.join(', ')
 
 function detectDshVersion() {
   const readVersionAt = (path) => {
@@ -109,9 +110,8 @@ function detectDshVersion() {
 }
 
 const dshVersion = detectDshVersion()
-const dshVersionMatches = dshVersion === 'unknown'
-  ? null // 探测不到 ≠ 不匹配，不吓唬人，只如实上报
-  : dshVersion.split('.').slice(0, 2).join('.') === TESTED_DSH_SERIES
+const detectedCompatibility = classifyHostVersion(dshVersion, HOST_POLICY)
+const dshVersionMatches = detectedCompatibility.status === 'unknown' ? null : detectedCompatibility.status === 'tested'
 
 /**
  * `freezeMessage` 来自 @deepseek-ai/dsh-llm。用**动态导入**而不是静态导入：
@@ -140,15 +140,11 @@ export const name = 'jev-prune'
 /**
  * Cordis 的依赖声明。**这一步是整个插件能否生效的关键。**
  *
- * 实测踩过：只写 `['tools']` 时，Cordis 等到 tools 就绪就调用 apply()，
- * 而那会 `ctx.get('toolResultPruner')` 返回 null —— 服务还没注册
- * （pruner 由 base bundle 的 tool-result-pruner 条目提供）。结果插件加载成功、
- * 配置正确、installPrunerOverride 也跑了，但**静默地没接管任何东西**。
- * 这类失败在宿主日志里完全看不见，只能靠心跳文件/落盘才能发现。
- *
- * 把 pruner 也声明进来，Cordis 才会等它就绪再调 apply()。
+ * Only tools is a required root service. New Web profiles place pruner and
+ * compaction in isolated preset realms, so requiring them here stalls startup.
+ * Their actual instances are resolved and hooked before each Agent step.
  */
-export const inject = ['tools', 'toolResultPruner']
+export const inject = ['tools']
 
 /** 裁剪标记与裁剪机制从 prune.js 复用（那边才能被单测覆盖）。 */
 export { JEV_PRUNE_MARKER }
@@ -578,8 +574,26 @@ export function apply(ctx, config, deps = {}) {
   const cfg = resolveConfig(config)
   if (!cfg.enabled) return
 
-  if (dshVersionMatches === false) {
-    ctx.logger?.info?.(`[jev-prune] DSH ${dshVersion} 与测试版本 ${TESTED_DSH_VERSION} 不同系列 —— 事件字段可能已漂移，建议先跑 jev_probe_shapes 核对`)
+  // Newer Web profiles isolate compaction services in preset realms. Resolve
+  // them through the host API for the actual agent, never fabricate a realm.
+  let serviceForAgent = deps.serviceForAgent ?? null
+  const scopedServicesReady = serviceForAgent != null ? Promise.resolve() :
+    import('@deepseek-ai/dsh-agent-preset-registry').then(module => {
+      serviceForAgent = typeof module.serviceForAgent === 'function' ? module.serviceForAgent : null
+    }).catch(() => {})
+  const hostService = (name, agent) => {
+    if (agent?.ctx && serviceForAgent != null) {
+      const scoped = serviceForAgent(ctx, agent, name)
+      if (scoped != null) return scoped
+    }
+    try { return ctx.get?.(name) ?? ctx[name] ?? null } catch { return null }
+  }
+  const prunerHooks = new WeakSet()
+  const summaryHooks = new WeakSet()
+  let agentCapabilities = null
+
+  if (['untested', 'unsupported'].includes(detectedCompatibility.status)) {
+    ctx.logger?.info?.(`[jev-prune] DSH ${dshVersion}: ${detectedCompatibility.status}（已验证 ${TESTED_DSH_VERSION}）；按服务能力接入，请先用 dryRun 和 jev_probe_shapes 核对`)
   }
 
   // 每个 apply 实例持有自己的解析结果，避免一次测试/一次宿主加载污染其他实例。
@@ -768,6 +782,7 @@ export function apply(ctx, config, deps = {}) {
         now: new Date().toISOString(),
         pid: typeof process !== 'undefined' ? process.pid : null,
         dshVersion: { version: dshVersion, testedAgainst: TESTED_DSH_VERSION, matchesTested: dshVersionMatches },
+        compatibility: { ...detectedCompatibility, capabilities: agentCapabilities ?? inspectHostCapabilities(ctx) },
         judgeReady: judge.ready !== false,
         model: cfg.model,
         // 越界配置被钳制的记录（issue #28）。空数组 = 配置全部合法。
@@ -932,7 +947,7 @@ export function apply(ctx, config, deps = {}) {
     // 默认 0 = 不裁（失败方向：算不出压力就不动手）。
     let pressureRatio = 0
     if (cfg.judgeOn !== 'always') {
-      const meter = ctx.get('tokenMeter')
+      const meter = hostService('tokenMeter', agent)
       let used = 0
       let measured = false
       try {
@@ -1187,10 +1202,10 @@ export function apply(ctx, config, deps = {}) {
     return out
   }
 
-  function installPrunerOverride() {
-    if (takeover.installed) return () => {}
+  function installPrunerOverride(agent) {
+    const pruner = hostService('toolResultPruner', agent)
+    if (pruner != null && prunerHooks.has(pruner)) return () => {}
     takeover = { attempted: true, installed: false, reason: '' }
-    const pruner = ctx.get('toolResultPruner') ?? ctx.toolResultPruner
     if (pruner == null || typeof pruner.pruneSession !== 'function') {
       takeover.reason = pruner == null
         ? 'ctx.toolResultPruner 不存在 —— 需加载 @deepseek-ai/dsh-compaction-tool-result-pruner'
@@ -1201,15 +1216,18 @@ export function apply(ctx, config, deps = {}) {
     }
     const originalSession = pruner.pruneSession.bind(pruner)
     pruner.pruneSession = (session) => pruneViaJev(pruner, session)
+    prunerHooks.add(pruner)
     takeover = { attempted: true, installed: true, reason: 'ok' }
     log('info', `已接管 ctx.toolResultPruner.pruneSession（keepThreshold=${cfg.keepThreshold}, preserveRecent=${cfg.preserveRecent}, dryRun=${cfg.dryRun}）`)
     // 越界配置必须在加载时就喊出来（issue #28）：钳制后的行为与用户写下的配置不一致，
     // 若不提示，用户会一直以为"我配了但没生效"是插件的 bug。
     for (const w of cfg[CONFIG_WARNINGS] ?? []) log('warn', w)
     writeHeartbeat()
-    return () => {
+    ctx.effect(() => () => {
       pruner.pruneSession = originalSession
-    }
+      prunerHooks.delete(pruner)
+    })
+    return () => {}
   }
 
   // ---------------------------------------------------------- 第二层：回执压缩
@@ -1229,16 +1247,16 @@ export function apply(ctx, config, deps = {}) {
   // Host region entry clears inherited ownership; exact input matching is an
   // additional guard for direct summarize calls inside the producer chain.
   const receiptContext = new AsyncLocalStorage()
-  let runReceiptCompaction = null
+  const runReceiptCompactions = new WeakMap()
 
-  function summaryService() {
-    return ctx.get?.('compaction') ?? ctx.compaction ?? null
+  function summaryService(agent) {
+    return hostService('compaction', agent)
   }
 
-  function installSummaryHook() {
-    if (summaryHook.installed) return () => {}
+  function installSummaryHook(agent) {
+    const compaction = summaryService(agent)
+    if (compaction != null && summaryHooks.has(compaction)) return () => {}
     summaryHook = { attempted: true, installed: false, reason: '' }
-    const compaction = summaryService()
     if (compaction == null || typeof compaction.summarize !== 'function') {
       summaryHook.reason = compaction == null
         ? 'ctx.compaction 不存在 —— 需加载 @deepseek-ai/dsh-compaction-basic'
@@ -1254,7 +1272,7 @@ export function apply(ctx, config, deps = {}) {
       return () => {}
     }
     const wrappedRegion = (...args) => receiptContext.run(undefined, () => originalRegion.apply(compaction, args))
-    runReceiptCompaction = (entry, ...args) => receiptContext.run(entry, () => originalRegion.apply(compaction, args))
+    runReceiptCompactions.set(compaction, (entry, ...args) => receiptContext.run(entry, () => originalRegion.apply(compaction, args)))
     const wrappedSummarize = async (input, agent, signal) => {
       const entry = receiptContext.getStore()
       const messages = input?.messages
@@ -1280,18 +1298,22 @@ export function apply(ctx, config, deps = {}) {
     }
     compaction.summarize = wrappedSummarize
     compaction.compactRegion = wrappedRegion
+    summaryHooks.add(compaction)
     summaryHook = { attempted: true, installed: true, reason: 'ok' }
     log('info', `已接管 ctx.compaction.summarize（回执模式；compactOn=${cfg.compactOn}, quantile=${cfg.compactQuantile}）`)
     writeHeartbeat()
-    return () => {
+    ctx.effect(() => () => {
       if (compaction.summarize === wrappedSummarize) compaction.summarize = original
       if (compaction.compactRegion === wrappedRegion) compaction.compactRegion = originalRegion
-    }
+      summaryHooks.delete(compaction)
+      runReceiptCompactions.delete(compaction)
+    })
+    return () => {}
   }
 
   /** 用宿主自己的 token meter 量一段 surface 跨度的 token 数。 */
   function spanTokens(agent, seqs) {
-    const meter = ctx.get?.('tokenMeter')
+    const meter = hostService('tokenMeter', agent)
     if (meter == null || typeof meter.measure !== 'function') return null
     try {
       const wanted = new Set(seqs)
@@ -1350,12 +1372,16 @@ export function apply(ctx, config, deps = {}) {
       return report
     }
     refreshGoal(session)
-    const compaction = summaryService()
+    await scopedServicesReady
+    installPrunerOverride(agent)
+    installSummaryHook(agent)
+    agentCapabilities = inspectHostCapabilities({get: name => hostService(name, agent)})
+    const compaction = summaryService(agent)
     if (compaction == null || typeof compaction.compactRegion !== 'function') {
       report.blocked = 'ctx.compaction 不可用（compactRegion 缺失）'
       return report
     }
-    if (!summaryHook.installed) {
+    if (!summaryHooks.has(compaction)) {
       // 没有 summarize 接入点 = 我们的回执注不进去 = 会退化成模型摘要。宁可不做。
       report.blocked = `summarize 未接管（${summaryHook.reason || '未尝试'}）—— 不做第二层，避免退化成模型摘要`
       return report
@@ -1368,7 +1394,7 @@ export function apply(ctx, config, deps = {}) {
     // 压力门：整对删除比截断风险大，所以默认阈值更高（70% vs 第一层的 55%）
     // 失败方向与第一层一致（issue #32）：解析不出阈值、或拿不到用量，都**不做**。
     if (!force && cfg.compactOn !== 'always') {
-      const meter = ctx.get?.('tokenMeter')
+      const meter = hostService('tokenMeter', agent)
       let used = 0
       let measured = false
       try {
@@ -1515,7 +1541,7 @@ export function apply(ctx, config, deps = {}) {
         let applied = 0
         let appliedChars = 0
         try {
-          const meter = ctx.get?.('tokenMeter')
+          const meter = hostService('tokenMeter', agent)
           for (let offset = 0; offset < pairs.length; offset += 1) {
             const pair = pairs[offset]
             const event = session.eventAt(pair.seq)
@@ -1588,7 +1614,7 @@ export function apply(ctx, config, deps = {}) {
         messages: structuredClone(spanSeqs.map(seq => session.deriveEventMessage(session.eventAt(seq))).filter(message => message != null)),
       }
       try {
-        const result = await runReceiptCompaction(entry, range.start, range.end, agent, options.signal)
+        const result = await runReceiptCompactions.get(compaction)(entry, range.start, range.end, agent, options.signal)
         action.receiptInjected = entry.claimed
         if (!entry.claimed) {
           stats.receiptFenceMisses += 1
@@ -1671,8 +1697,10 @@ export function apply(ctx, config, deps = {}) {
     stats.preStepEvents = (stats.preStepEvents ?? 0) + 1
     // 双保险：如果 apply() 时服务还没就绪，每次 pre-step 再试一次。
     // 依赖时序这种东西不该让插件"看起来加载成功、实际什么都没做"。
-    if (!takeover.installed) installPrunerOverride()
-    if (!summaryHook.installed) installSummaryHook()
+    await scopedServicesReady
+    installPrunerOverride(agent)
+    installSummaryHook(agent)
+    agentCapabilities = inspectHostCapabilities({get: name => hostService(name, agent)})
     if (judge.ready === false) {
       stats.errors += 1
       stats.lastNote = '未配置 TYPESAFE_API_KEY，跳过判定'
@@ -1726,7 +1754,7 @@ export function apply(ctx, config, deps = {}) {
   function renderStatus(agent) {
     const session = agent?.session
     const cache = session != null ? (decisions.get(session) ?? new Map()) : new Map()
-    const meter = ctx.get('tokenMeter')
+    const meter = hostService('tokenMeter', agent)
     const used = session != null && typeof meter?.measure === 'function' ? (meter.measure(session)?.totalTokens ?? 0) : 0
     // 工具名索引诊断：白名单不命中时，这一行能立刻告诉你"是名字没配上"
     const nameProbe = session?.surface?.nodes != null

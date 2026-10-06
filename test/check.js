@@ -11,6 +11,7 @@ import assert from 'node:assert/strict'
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { classifyHostVersion, inspectHostCapabilities } from '../src/compatibility.js'
 
 import { JevClient, JevError, estimateTokens } from '../src/jev.js'
 import { JEV_PRUNE_MARKER, countChars, decideAction, parseLimit, planTrims, pruneSessionWithJev, sliceWithBudget } from '../src/prune.js'
@@ -57,6 +58,17 @@ import {
 } from '../index.js'
 
 const here = dirname(dirname(fileURLToPath(import.meta.url)))
+{
+  const policy = { testedVersions: ['0.1.5-rc.2'], supportedSeries: ['0.1', '0.2'] }
+  assert.equal(classifyHostVersion('0.1.5-rc.2', policy).status, 'tested')
+  assert.equal(classifyHostVersion('0.2.0-rc.2', policy).status, 'untested')
+  assert.equal(classifyHostVersion('0.3.0', policy).status, 'unsupported')
+  assert.equal(classifyHostVersion('unknown', policy).status, 'unknown')
+  assert.equal(classifyHostVersion('not-a-version', policy).status, 'unsupported')
+  assert.deepEqual(inspectHostCapabilities({get:()=>null}), {tools:false,layer1:false,layer2:false,pressure:false,modelInfo:false})
+  assert.equal(inspectHostCapabilities({get:()=>{throw Error('missing')},tools:{register(){}}}).tools, false)
+  assert.equal(inspectHostCapabilities({tools:{register(){}},compaction:{compactRegion(){},summarize(){}}}).layer2,true)
+}
 
 // ---------------------------------------------------------------- token 估算
 // 常数由真实 BPE 标定（见 jev.js 的 TOKEN_ESTIMATE_CONSTANTS 注释）。

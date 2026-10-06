@@ -7,7 +7,7 @@
 
 [English](README.md) · **简体中文**
 
-![license](https://img.shields.io/badge/license-MIT-blue) ![node](https://img.shields.io/badge/node%20%3E%3D22.19-339933) ![dsh](https://img.shields.io/badge/DSH-0.1.x--rc-orange) [![CI](https://github.com/yangyu666/dsh-jev-prune/actions/workflows/ci.yml/badge.svg)](https://github.com/yangyu666/dsh-jev-prune/actions/workflows/ci.yml) ![smoke checks](https://img.shields.io/badge/smoke%20checks-127%20passing-success) [![Listed on dsh-plugin.org](https://dsh-plugin.org/badges/listed.svg)](https://dsh-plugin.org/plugins/yangyu666/dsh-jev-prune)
+![license](https://img.shields.io/badge/license-MIT-blue) ![node](https://img.shields.io/badge/node%20%3E%3D22.19-339933) ![dsh](https://img.shields.io/badge/DSH-0.1.x--rc-orange) [![CI](https://github.com/yangyu666/dsh-jev-prune/actions/workflows/ci.yml/badge.svg)](https://github.com/yangyu666/dsh-jev-prune/actions/workflows/ci.yml) ![smoke checks](https://img.shields.io/badge/smoke%20checks-130%20passing-success) [![Listed on dsh-plugin.org](https://dsh-plugin.org/badges/listed.svg)](https://dsh-plugin.org/plugins/yangyu666/dsh-jev-prune)
 
 ## 它解决什么问题
 
@@ -69,12 +69,16 @@ DSH 自带的上下文回收是**纯体积**的：工具结果超过阈值就掐
 
 ## 安装与快速开始
 
+**版本说明：** DSH 0.2.0-rc.2 请使用 0.1.1，它支持根级和 preset 内服务，已通过真实 CLI 安装与激活；旧的 0.1.0 会被该宿主拒绝。[兼容性证据与滚动验证](docs/compatibility.md)。
+
 要求 Node `^22.19.0 || >=24.0.0`；针对 **DSH 0.1.5-rc.2** 验证。profile 需要基础裁剪、压缩与 tokenMeter 服务。启动 DSH 前在环境中设置 `TYPESAFE_API_KEY`。
 
 固定版本安装：
 
 ```bash
-dsh plugin --profile web add github:yangyu666/dsh-jev-prune#v0.1.0
+dsh plugin --profile web add dsh-jev-prune@0.1.1
+# GitHub 安装方式：
+dsh plugin --profile web add github:yangyu666/dsh-jev-prune#v0.1.1
 ```
 
 本地开发：
@@ -82,7 +86,7 @@ dsh plugin --profile web add github:yangyu666/dsh-jev-prune#v0.1.0
 ```bash
 git clone https://github.com/yangyu666/dsh-jev-prune.git
 cd dsh-jev-prune
-git checkout v0.1.0
+git checkout v0.1.1
 npm ci
 npm run check
 npm run smoke
@@ -96,16 +100,14 @@ dsh plugin --profile web add link:/absolute/path/to/dsh-jev-prune
 先在 profile 的插件条目中开启 dry-run：
 
 ```yaml
-- insert:
-    - id: jev-prune
-      name: dsh-jev-prune
-      config:
-        dryRun: true
-        judgeOn: pressure
-        softLimit: "55%"
-        compactReceipts: true
-        compactOn: pressure
-        compactSoftLimit: "70%"
+- id: jev-prune
+  config:
+    dryRun: true
+    judgeOn: pressure
+    softLimit: "55%"
+    compactReceipts: true
+    compactOn: pressure
+    compactSoftLimit: "70%"
 ```
 
 检查 `/jev` 的判定和排除原因后，设为 `dryRun: false` 执行压缩。
