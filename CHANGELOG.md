@@ -1,13 +1,13 @@
 # Changelog
 
-## Unreleased
+## 0.1.1 — 2026-10-06
 
-- Prepare 0.1.1: accept tools from verified 0.1 and 0.2 release families, dynamically report runtime version and capabilities, and resolve preset-local compaction services for each Agent.
+- Accept tools from verified 0.1 and 0.2 release families, dynamically report runtime version and capabilities, and resolve preset-local compaction services for each Agent.
 - Add actual CLI installation and Web preset activation verification, plus an advisory rolling @next CI job. Keep the locked old-host regression fixture.
 
 - Fix #48: scope receipts to asynchronous compaction transactions, clear inherited ownership at host region entry, validate replay input and preserve claim-once/cancellation behavior.
 - Fix #49: invalidate result judgments when the recent user-instruction revision changes, retain effect judgments, refresh before manual actions and discard old-goal responses arriving in flight.
-- Expand simulated-host regression checks from 113 to 127; reverse verification against 0.1.0 fails 14 assertions.
+- Expand simulated-host checks from 113 to 130. The receipt/goal regression subset was reverse-verified against 0.1.0: 14 of its 127 assertions failed.
 
 ## 0.1.0 — 2026-10-06
 

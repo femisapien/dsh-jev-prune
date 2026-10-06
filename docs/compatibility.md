@@ -10,7 +10,7 @@
 | Published npm 0.1.0 | 0.2.0-rc.2 | Actual CLI rejects the old tools peer range; nothing installed. |
 | Prepared 0.1.1 source | 0.2.0-rc.2 | CLI archive install, composed config, 130 addon checks, real Web startup and standard-preset service takeover passed. |
 
-This PR prepares 0.1.1; it does not publish it. Do not install that version from npm before it exists. Verification installs a generated archive.
+The release preparation verifies a generated 0.1.1 archive. Registry publication is checked separately, followed by installation of the exact published npm version; archive verification alone is not that registry check.
 
 ## Locking versus compatibility
 
