@@ -7,7 +7,7 @@ Structured judgments from [TypeSafe Jev](https://typesafe.ai) drive DSH's two-la
 
 **English** · [简体中文](README_zh.md)
 
-![license](https://img.shields.io/badge/license-MIT-blue) ![node](https://img.shields.io/badge/node%20%3E%3D22.19-339933) ![dsh](https://img.shields.io/badge/DSH-0.1.x--rc-orange) [![CI](https://github.com/yangyu666/dsh-jev-prune/actions/workflows/ci.yml/badge.svg)](https://github.com/yangyu666/dsh-jev-prune/actions/workflows/ci.yml) ![smoke checks](https://img.shields.io/badge/smoke%20checks-113%20passing-success) [![Listed on dsh-plugin.org](https://dsh-plugin.org/badges/listed.svg)](https://dsh-plugin.org/plugins/yangyu666/dsh-jev-prune)
+![license](https://img.shields.io/badge/license-MIT-blue) ![node](https://img.shields.io/badge/node%20%3E%3D22.19-339933) ![dsh](https://img.shields.io/badge/DSH-0.1.x--rc-orange) [![CI](https://github.com/yangyu666/dsh-jev-prune/actions/workflows/ci.yml/badge.svg)](https://github.com/yangyu666/dsh-jev-prune/actions/workflows/ci.yml) ![smoke checks](https://img.shields.io/badge/smoke%20checks-127%20passing-success) [![Listed on dsh-plugin.org](https://dsh-plugin.org/badges/listed.svg)](https://dsh-plugin.org/plugins/yangyu666/dsh-jev-prune)
 
 ## The problem it solves
 
@@ -148,8 +148,8 @@ The recording runs the real plugin `apply()`, registered tools and replacement p
 
 - Live judging sends history, paths, snippets and command output to TypeSafe and adds inference cost and latency.
 - Automated CI covers helpers, simulated-host behavior and loading against a locked host dependency tree. It does not exercise a live DSH session end to end.
-- Pending receipts are claim-once, but current fencing does not identify an external concurrent summary's transaction. Avoid concurrent compaction; see [review findings](docs/review-2026-10-05.md).
-- Result judgments are cached by sequence, without task-goal invalidation. Small-population layer-1 fallback can trim at zero pressure ratio.
+- On current source, receipts are scoped to an asynchronous transaction and validated against the selected replay messages; foreign, canceled or mismatched summaries fall back to the host. The published 0.1.0 still has the older session-scoped behavior. See [architecture](docs/ARCHITECTURE.md).
+- Current source invalidates result judgments when the last three user instructions change, retaining effect judgments and discarding in-flight answers for older goals. Small-population layer-1 fallback can still trim at zero pressure ratio.
 - `jev_restore` currently finds region summary checkpoints, truncates each returned event to 4,000 UTF-16 units, and does not directly resolve layer-1 or partial-result replacement IDs. Original events remain in the log.
 
 ## Layout and development

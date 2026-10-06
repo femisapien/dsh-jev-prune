@@ -33,12 +33,14 @@ The dependency direction stays toward the pure modules. Host APIs must remain in
 1. A prepended `agent/pre-step` hook builds the current state and asks Jev only for missing verdict axes.
 2. DSH's `compaction-basic` hook calls the synchronously overridden `toolResultPruner.pruneSession`. Layer 1 reads the verdict cache and replaces stale result bodies with head/marker/tail content.
 3. The normal second plugin hook selects read-only call/result pairs whose result and effect verdicts are both low. Fully eligible steps become balanced contiguous ranges; mixed parallel batches become per-result replacements matched by `callId`.
-4. Full ranges run through `compactRegion`. A one-use ownership token lets the temporary `summarize` override inject a deterministic receipt only for that transaction. Mixed batches use DSH's single-node shadow-price + `tool/result` replacement protocol, preserving every pair envelope and every rejected result.
+4. Full ranges run through the captured `compactRegion` in an AsyncLocalStorage transaction. The summary hook checks session, exact replay messages (with an optional system head), cancellation, lifetime and claim-once state. Host calls to the public region entry clear inherited receipt ownership. Mixed batches use DSH's single-node shadow-price + `tool/result` replacement protocol.
 5. Original events remain in the session log. The surface points to replacement or compaction events, and `jev_restore` can retrieve the shadowed text.
 
 ## State and identity
 
 Verdicts are held in a `WeakMap<session, Map<seq, verdict>>`. A layer-1 replacement receives a new seq and records the old seq in `sourceEventSeqs`; cache lookup follows that metadata so both layers keep the same judgment. In-memory verdicts are rebuilt after a process restart.
+
+The result-axis cache is additionally keyed by a SHA-256 revision of the sequence identities and complete text of the latest three non-checkpoint user instructions. This is deliberately not the truncated 500-character judge header. A revision change clears result probabilities and sets a conservative keep, while retaining effect probabilities. Judge, synchronous pruner and manual compaction entry all refresh the revision; old-goal in-flight responses are discarded. Assistant/tool progress alone does not invalidate the cache. This policy detects instruction changes, not every semantic change in an evolving task.
 
 The pressure ratio is also session-scoped. `judgePass` computes it asynchronously, and the synchronous layer-1 override consumes it later in the same pre-step chain.
 
@@ -60,4 +62,4 @@ One assistant message may contain several parallel tool calls. They share one he
 
 Detailed configuration, gating, protocol history and troubleshooting moved to [the implementation reference](implementation.md). Measurement notes are in [measurements](measurements.md). The recorded [demo](../demo/README.md) runs real plugin code with a simulated host.
 
-The current fencing token supports claim-once behavior, but does not prove which external compaction owns a summary call. See [the reviewed limitations](review-2026-10-05.md) before using concurrent compaction.
+The published 0.1.0 used a global active fence and session-keyed pending receipt. Current unreleased source replaces it with async transaction ownership and replay-input validation. Host serialization and surface-stability checks remain the host's responsibility. Alternate backends whose replay input differs from DSH's contract fall back to their original summarizer.

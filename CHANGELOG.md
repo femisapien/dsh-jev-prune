@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Fix #48: scope receipts to asynchronous compaction transactions, clear inherited ownership at host region entry, validate replay input and preserve claim-once/cancellation behavior.
+- Fix #49: invalidate result judgments when the recent user-instruction revision changes, retain effect judgments, refresh before manual actions and discard old-goal responses arriving in flight.
+- Expand simulated-host regression checks from 113 to 127; reverse verification against 0.1.0 fails 14 assertions.
+
 ## 0.1.0 — 2026-10-06
 
 - Concise English and Chinese project introductions; implementation/configuration history moved behind architecture links.
